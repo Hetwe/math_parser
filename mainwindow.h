@@ -6,10 +6,30 @@
 #include <QQueue>
 #include <QStack>
 #include <QVector>
+#include <QLabel>
+#include <QThread>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
+
+
+class Worker : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit Worker(QObject* parent = 0);
+public slots:
+    void runConsistent(int, int, QString);
+    void runStepbystep(int, int, QString);
+    void runSegmental(int, int, QString);
+signals:
+
+private:
+
+};
+
 
 class MainWindow : public QMainWindow
 {
@@ -17,25 +37,35 @@ class MainWindow : public QMainWindow
 
 public:
     MainWindow(QWidget *parent = nullptr);
-    void analize();
-    bool is_spec_symbol(QString);
-    int get_priority_spec_symbol(QString);
-    void analize_bracket();
-    void remove_first_right_bracket();
-    QString calculate(QString, QString, QString);
-    QString calculate_trigonometry(QString, QString);
+    void write();
+    void call();
     ~MainWindow();
+    bool eventFilter(QObject *watched, QEvent *event);
+    void mousePressEvent(QMouseEvent *event);
+    void mouseMoveEvent(QMouseEvent *event);
+    void mouseReleaseEvent(QMouseEvent *event);
+
+public slots:
+
 
 private slots:
-    void on_pushButton_clicked();
+    void on_expression_textEdited(const QString &arg1);
+    void on_calculate_clicked();
 
+signals:
+    void signalMouseHover(QLabel*);
+    void startConsistent(int, int, QString);
+    void startStepbystep(int, int, QString);
+    void startSegmental(int, int, QString);
 private:
-    QVector<QString> input;
-    QVector<QString> stack_operation;
-    QQueue<QString> output;
-    QStack<QString> result;
-    int count = 0;
-    QString expression;
     Ui::MainWindow *ui;
+    Worker *workerConsistent;
+    Worker *workerStepbystep;
+    Worker *workerSegmental;
+    QThread *thread1;
+    QThread *thread2;
+    QThread *thread3;
+    QPoint lastPos;
+    bool moving = false;
 };
 #endif // MAINWINDOW_H
