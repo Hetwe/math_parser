@@ -1,293 +1,65 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "expression-analysis.h"
 
-#define addition 1
-#define subtraction 1
-#define division 2
-#define multiplication 3
-#define exponentiation 4
-#define cosine 5
+#include <QMouseEvent>
+#include <QFont>
+#include <QFontMetrics>
+#include <QLineEdit>
+#include <QFontDatabase>
 
-static int bracket_left = 0;
-static int bracket_right = 0;
+static QString valueOfConsistentAlgorithms;
+static QString valueOfStepbystepAlgorithms;
+static QString valueOfSegmentalAlgorithms;
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    QPixmap myPixmap(":/image/sum_icon_151075 (1).png");
+    ui->picture->setPixmap(myPixmap);
+    ui->close->installEventFilter(this);
+    ui->rollUp->installEventFilter(this);
+    this->setWindowFlags(Qt::FramelessWindowHint);
+    this->setAttribute(Qt::WA_TranslucentBackground);
+    int id = QFontDatabase::addApplicationFont(":/fonts/fonts/Nunito-SemiBold.ttf");
+    QString family = QFontDatabase::applicationFontFamilies(id).at(0);
+    QFont monospace(family);
+
+
+    thread1 = new QThread(this);
+    thread2 = new QThread(this);
+    thread3 = new QThread(this);
+
+    connect(this, SIGNAL(destroyed()), thread1, SLOT(quit()));
+    connect(this, SIGNAL(destroyed()), thread2, SLOT(quit()));
+    connect(this, SIGNAL(destroyed()), thread3, SLOT(quit()));
+
+    workerConsistent = new Worker();
+    workerStepbystep = new Worker();
+    workerSegmental = new Worker();
+
+    connect(this, SIGNAL(startConsistent(int, int, QString)), workerConsistent, SLOT(runConsistent(int, int, QString)));
+    connect(this, SIGNAL(startStepbystep(int, int, QString)), workerStepbystep, SLOT(runStepbystep(int, int, QString)));
+    connect(this, SIGNAL(startSegmental(int, int, QString)), workerSegmental, SLOT(runSegmental(int, int, QString)));
+
+    workerConsistent->moveToThread(thread1);
+    workerStepbystep->moveToThread(thread2);
+    workerSegmental->moveToThread(thread3);
+
+    thread1->start();
+    thread2->start();
+    thread3->start();
+
+
 }
 
-bool MainWindow::is_spec_symbol(QString symbol)
+void MainWindow::write()
 {
-    if(symbol == '+' ||
-       symbol == '-' ||
-       symbol == '*' ||
-       symbol == '/' ||
-       symbol == '^' ||
-       symbol == "cos"
-    ) return true;
-    else return false;
-}
-//(6+1-4)/(1+1*2)+1
-int MainWindow::get_priority_spec_symbol(QString symbol)
-{
-    if(symbol == '+')
-        return addition;
-    else if(symbol == '-')
-        return subtraction;
-    else if(symbol == '/')
-        return division;
-    else if(symbol == '*')
-        return multiplication;
-    else if(symbol == '^')
-        return exponentiation;
-    else if(symbol == "cos")
-        return cosine;
-    else return 0;
-}
-
-void MainWindow::analize_bracket()
-{
-    if(bracket_left != 0 && bracket_right != 0){
-        if(bracket_left == bracket_right){
-            if(input.size() == 1){
-                // Удаление всех закрывающих скобок
-                QMutableVectorIterator<QString> iter(stack_operation);
-                while(iter.hasNext())
-                    if(iter.next() == ')')
-                        iter.remove();
-                while(!stack_operation.isEmpty()){
-                    if(stack_operation.last() != '('){
-                        output.push_back(stack_operation.last());
-                        stack_operation.remove(stack_operation.size() - 1);
-                    }
-                    else{
-                        stack_operation.remove(stack_operation.size() - 1);
-                    }
-                }
-                bracket_left = 0;
-                bracket_right = 0;
-            }
-            else{
-                QMutableVectorIterator<QString> iter(stack_operation);
-                while(iter.hasNext())
-                    if(iter.next() == ')')
-                        iter.remove();
-                while(!stack_operation.isEmpty()){
-                    if(stack_operation.last() != '('){
-                        output.push_back(stack_operation.last());
-                        stack_operation.remove(stack_operation.size() - 1);
-                    }
-                    else{
-                        stack_operation.remove(stack_operation.size() - 1);
-                    }
-                }
-                bracket_left = 0;
-                bracket_right = 0;
-            }
-        }
-    }
-}
-
-//====ФИЧА====//
-void MainWindow::remove_first_right_bracket(){
-    if(bracket_left > bracket_right){
-        QMutableVectorIterator<QString> iter(stack_operation);
-        while(iter.hasNext())
-            if(iter.next() == ')')
-                iter.remove();
-        while(stack_operation.last() != '('){
-            output.push_back(stack_operation.last());
-            stack_operation.remove(stack_operation.size() - 1);
-        }
-        stack_operation.remove(stack_operation.size() - 1);
-        bracket_left -= 1;
-        bracket_right -= 1;
-    }
-    else return;
-}
-
-QString MainWindow::calculate(QString a, QString b, QString spec_symb)
-{
-    if(spec_symb == '+')
-        return QString::number(a.toDouble() + b.toDouble());
-    else if(spec_symb == '-')
-        return QString::number(a.toDouble() - b.toDouble());
-    else if(spec_symb == '/')
-        return QString::number(a.toDouble() / b.toDouble());
-    else if(spec_symb == '*')
-        return QString::number(a.toDouble() * b.toDouble());
-    else if(spec_symb == '^')
-        return QString::number(pow(a.toDouble(), b.toDouble()));
-    else return NULL;
-}
-
-QString MainWindow::calculate_trigonometry(QString x, QString spec_symb)
-{
-    if(spec_symb == "cos"){
-        return QString::number(cos(x.toDouble()));
-    }
-}
-
-
-
-void MainWindow::analize()
-{
-    QString string = ui->lineEdit->text();
-     // expression = ui->lineEdit->text();
-    QString array_char[100];
-    QString temp;
-    count = 0;
-    for(int i = 0, j = 0; i < string.length(); i++, count++){
-        if(string[i] == ')' ||
-           string[i] == '+' ||
-           string[i] == '/' ||
-           string[i] == '*' ||
-           string[i] == '^'
-        ){
-            array_char[count] = string[i];
-            continue;
-        }
-        else if(string[i] == '-'){
-            if(i == 0){
-
-                array_char[count] = '0';
-                array_char[++count] = '-';
-                continue;
-            }
-            array_char[count] = string[i];
-            continue;
-        }
-        else if(string[i] == '('){
-            if(string[i + 1] == '-'){
-                array_char[count] = '(';
-                array_char[++count] = '0';
-                array_char[++count] = '-';
-                i++;
-                continue;
-            }
-            array_char[count] = string[i];
-            continue;
-        }
-
-        for(j = i; j < string.length(); j++){
-            if(string[j] == 'c'){
-                temp = "cos";
-                i += 2;
-                break;
-            }
-            if(string[j] != '+' &&
-               string[j] != '-' &&
-               string[j] != '/' &&
-               string[j] != '*' &&
-               string[j] != ')' &&
-               string[j] != '^'
-            ){
-                temp += string[j];
-                continue;
-            }
-            else{
-                i = j - 1;
-                break;
-            }
-
-        }
-        if(j == string.length()){
-            i = j;
-        }
-        array_char[count] = temp;
-        temp.clear();
-    }
-    for(int i = 0; i < array_char->length(); i++){
-        qDebug() << array_char[i];
-    }
-    for(int i = 0; i < count; i++){
-        input.push_back(array_char[i]);
-    }
-    qDebug() << input;
-    //system("pause");
-//    QString a = "adsdffasdf";
-//    QString b = "fasdfasdfsdafssdgds";
-//    a = b;
-//     expression = *new QString[count];
-//     expression[0] = array_char[0];
-//     for (int i = 0; i < count; i++) {
-//         expression[i] = "1";
-//     }
-//===================================================================
-    while(!input.isEmpty()){
-        if(input.first() == "("){
-            stack_operation.push_back("(");
-            bracket_left += 1;
-            analize_bracket();
-            input.pop_front();
-            continue;
-        }
-        else if(input.first() == ")"){
-            stack_operation.push_back(")");
-            bracket_right += 1;
-            remove_first_right_bracket();
-            analize_bracket();
-            input.pop_front();
-            continue;
-        }
-
-
-        if(is_spec_symbol(input.first())){
-            if(stack_operation.empty()){
-                stack_operation.push_back(input.first());
-            }
-            else{
-                if(get_priority_spec_symbol(input.first()) <= get_priority_spec_symbol(stack_operation.last())){
-                    output.push_back(stack_operation.last());
-                    stack_operation.remove(stack_operation.size() - 1);
-                    stack_operation.push_back(input.first());
-                }
-                else{
-                    stack_operation.push_back(input.first());
-                }
-
-            }
-        }
-        else{
-            output.push_back(input.first());
-        }
-        input.pop_front();
-    }
-//    for(int i = 0; i < expression.length(); i++)
-//    {
-
-//    }
-    while(!stack_operation.isEmpty()){
-        output.push_back(stack_operation.last());
-        stack_operation.remove(stack_operation.size() - 1);
-    }
-    qDebug() << stack_operation;
-    qDebug() << output;
-    while(!output.isEmpty()){
-        result.push(output.dequeue());
-        if(is_spec_symbol(result.top())){
-            QString a, b, spec_symb;
-            if(result.top() == "cos"){
-                spec_symb = result.pop();
-                a = result.pop();
-                result.push(calculate_trigonometry(a, spec_symb));
-            }
-            else{
-                spec_symb = result.pop();
-                b = result.pop();
-                a = result.pop();
-                result.push(calculate(a, b, spec_symb));
-            }
-        }
-    }
-    qDebug() << result;
-    ui->lineEdit_2->setText(result.pop());
-    stack_operation.clear();
-    result.clear();
-    output.clear();
-    input.clear();
+    ui->consistent->setText(valueOfConsistentAlgorithms);
+    ui->StepByStep->setText(valueOfStepbystepAlgorithms);
+    ui->segmental->setText(valueOfSegmentalAlgorithms);
 }
 
 MainWindow::~MainWindow()
@@ -295,8 +67,136 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-
-void MainWindow::on_pushButton_clicked()
+void MainWindow::on_calculate_clicked()
 {
-    analize();
+    int start = ui->start->text().toInt();
+    int end = ui->end->text().toInt();
+    QString string = ui->expression->text();
+    emit startConsistent(start, end, string);
+    emit startStepbystep(start, end, string);
+    emit startSegmental(start, end, string);
+    write();
 }
+
+Worker::Worker(QObject *parent)
+{
+
+}
+
+void Worker::runConsistent(int start, int end, QString string)
+{
+    QString expression;
+    double summa = 0.0;
+    ExpressionAnalysis expressionAnalysis;// Объект класса, который вычисляет выражение под знаком суммы на каждой итерации
+    //Вырожение под знаком суммы содержит неизвестный элемент 'x' вместо привычного 'n'
+    for(int i = start; i <= end; i++){
+        expression = string;
+        expression.replace(QString("x"), QString(QString::number(i)));//Заменяем неизвестный 'x' на i
+        summa += expressionAnalysis.analysis(expression).toDouble();//Функция analysis принимает в парметры выражение и возвращает строковое значение
+    }
+    valueOfConsistentAlgorithms = QString::number(summa);
+}
+
+void Worker::runStepbystep(int start, int end, QString string)
+{
+    QString expression;
+    ExpressionAnalysis expressionAnalysis;
+    double temp[1] = {0};
+    //Реализация упрощенного шагового алгоритма для одного потока
+    for(int i = 0; i < 1; i++){
+        for(int k = start; k <= end; k += 1){
+            expression = string;
+            expression.replace(QString("x"), QString(QString::number(k)));
+            temp[i] += expressionAnalysis.analysis(expression).toDouble();
+        }
+    }
+    valueOfStepbystepAlgorithms = QString::number(temp[0]);
+}
+
+void Worker::runSegmental(int start, int end, QString string)
+{
+
+    QString expression;
+    ExpressionAnalysis expressionAnalysis;
+    double temp[1] = {0};
+    int m = (end - start) / 1 + 1;
+    for(int i = 0; i < 1; i++){
+        //int start = i * m;
+        int finish = (i + 1) * m < (end - start) ? (i + 1) * m : end;
+        for(int k = start /*=start*/; k <= finish; k++){
+            expression = string;
+            expression.replace(QString("x"), QString(QString::number(k)));
+            temp[i] += expressionAnalysis.analysis(expression).toDouble();
+        }
+    }
+    valueOfSegmentalAlgorithms = QString::number(temp[0]);
+}
+
+//====ФУНКЦИИ НИЖЕ ОТНОСЯТСЯ ТОЛЬКО К ИНТЕРФЕЙСУ ПРИЛОЖЕНИЯ====//
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if(watched == ui->close){
+        if(event->type() == QEvent::MouseButtonPress){
+            QApplication::quit();
+            return true;
+        }
+    }
+    else if(watched == ui->rollUp){
+        if(event->type() == QEvent::MouseButtonPress){
+            showMinimized();
+            return true;
+        }
+    }
+    return false;
+}
+
+void MainWindow::mousePressEvent(QMouseEvent *event)
+{
+    if(event->buttons() == Qt::LeftButton){
+        moving = true;
+        lastPos = event->pos();
+    }
+}
+
+void MainWindow::mouseMoveEvent(QMouseEvent *event) {
+    if(event->buttons() == Qt::LeftButton && moving){
+        this->move(this->pos() + (event->pos() - lastPos));
+    }
+}
+
+void MainWindow::mouseReleaseEvent(QMouseEvent *event)
+{
+    if(event->buttons() == Qt::LeftButton){
+        moving = false;
+    }
+
+}
+
+void MainWindow::on_expression_textEdited(const QString &arg1)
+{
+    if(ui->expression->text().length() == 0){
+        ui->expression->resize(81, 31);
+    }
+    static int countSymb = 0;
+    if(ui->expression->text().length() >= countSymb && countSymb != 0){
+        qDebug() << "Edit1";
+        ui->expression->resize(ui->expression->width() + 10, 31);
+        countSymb++;
+        return;
+    }
+    if(ui->expression->text().length() < countSymb && countSymb != 0){
+        qDebug() << "Edit1";
+        countSymb = ui->expression->text().length();
+        ui->expression->resize(ui->expression->width() - 8, 31);
+        return;
+    }
+    if(ui->expression->text().length() >= 6){
+        qDebug() << "Edit";
+        countSymb = ui->expression->text().length();
+    }
+}
+
+
+
+
